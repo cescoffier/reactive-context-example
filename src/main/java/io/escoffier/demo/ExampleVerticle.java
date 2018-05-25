@@ -13,33 +13,32 @@ public class ExampleVerticle extends AbstractVerticle {
 
     @Override
     public void start() {
-        MyContext.init();
 
         HttpServer server = vertx.createHttpServer();
 
-        server.requestStream().toFlowable()
-            .doOnNext(req -> {
-                MyContext.get().setRequest(req).setMessage(req.getParam("name"));
-                System.out.println("Param is " + MyContext.get().getMessage());
-            })
-            .compose(flowable -> {
-                long delay = (long) (1000 * Math.random());
-                return flowable.delay(delay, TimeUnit.MILLISECONDS);
-            })
-            .flatMapSingle(x -> proceed())
-            .subscribe(
-                res -> {
+        server.requestHandler(req -> {
+            MyContext.init();
+            Single.just(req)
+                .doOnSuccess(x -> {
+                    MyContext.get().setRequest(req).setMessage(req.getParam("name"));
+                    System.out.println("Param is " + MyContext.get().getMessage());
+                })
+                .compose(flowable -> {
+                    long delay = (long) (1000 * Math.random());
+                    return flowable.delay(delay, TimeUnit.MILLISECONDS);
+                })
+                .flatMap(x -> proceed())
+                .doOnSuccess(res -> {
                     HttpServerRequest request = MyContext.get().getRequest();
                     request.response().end(res);
-                },
-                err -> {
+                })
+                .doOnError(err -> {
                     HttpServerRequest request = MyContext.get().getRequest();
                     err.printStackTrace();
                     request.response().end(err.getMessage());
-                }
-            );
-
-        server.listen(8080);
+                })
+                .subscribe();
+        }).listen(8080);
     }
 
     private AtomicInteger counter = new AtomicInteger();
